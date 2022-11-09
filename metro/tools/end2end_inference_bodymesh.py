@@ -33,8 +33,10 @@ from metro.utils.miscellaneous import mkdir, set_seed
 from PIL import Image
 from torchvision import transforms
 
+from tqdm import tqdm
+
 transform = transforms.Compose([           
-                    transforms.Resize(224),
+                    transforms.Resize(224, max_size=225),
                     transforms.CenterCrop(224),
                     transforms.ToTensor(),
                     transforms.Normalize(
@@ -42,15 +44,18 @@ transform = transforms.Compose([
                         std=[0.229, 0.224, 0.225])])
 
 transform_visualize = transforms.Compose([           
-                    transforms.Resize(224),
+                    transforms.Resize(224, max_size=225),
                     transforms.CenterCrop(224),
                     transforms.ToTensor()])
 
-def run_inference(args, image_list, _metro_network, smpl, renderer, mesh_sampler):
+def run_inference(args, image_list, _metro_network, smpl, renderer, mesh_sampler, output_dir=None):
     # switch to evaluate mode
     _metro_network.eval()
+
+    if output_dir is not None:
+        os.makedirs(output_dir, exist_ok=True)
     
-    for image_file in image_list:
+    for image_file in tqdm(image_list):
         if 'pred' not in image_file:
             att_all = []
             img = Image.open(image_file)
@@ -92,8 +97,14 @@ def run_inference(args, image_list, _metro_network, smpl, renderer, mesh_sampler
             visual_imgs = visual_imgs_att.transpose(1,2,0)
             visual_imgs = np.asarray(visual_imgs)
                     
-            temp_fname = image_file[:-4] + '_metro_pred.jpg'
-            print('save to ', temp_fname)
+            dirname, basename = op.split(image_file)
+            if output_dir is not None:
+                dirname = output_dir
+            image_ext = basename.split(".")[-1]
+            image_name = "".join(basename.split(".")[:-1])
+            temp_fname = op.join(dirname, image_name+"_METRO_vis"+"."+image_ext)
+            
+            # print('save to ', temp_fname)
             cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
 
     return 
@@ -146,6 +157,8 @@ def parse_args():
     #########################################################
     parser.add_argument("--image_file_or_path", default='./test_images/human-body', type=str, 
                         help="test data")
+    parser.add_argument("--image_output", default=None, type=str, 
+                        help="output folder for results visualization")
     #########################################################
     # Loading/saving checkpoints
     #########################################################
@@ -306,12 +319,12 @@ def main(args):
     elif op.isdir(args.image_file_or_path):
         # should be a path with images only
         for filename in os.listdir(args.image_file_or_path):
-            if filename.endswith(".png") or filename.endswith(".jpg") and 'pred' not in filename:
+            if filename.endswith(".png") or filename.endswith(".jpg") and "_METRO_vis" not in filename:
                 image_list.append(args.image_file_or_path+'/'+filename) 
     else:
         raise ValueError("Cannot find images at {}".format(args.image_file_or_path))
 
-    run_inference(args, image_list, _metro_network, mesh_smpl, renderer, mesh_sampler)    
+    run_inference(args, image_list, _metro_network, mesh_smpl, renderer, mesh_sampler, output_dir=args.image_output)  
 
 if __name__ == "__main__":
     args = parse_args()
